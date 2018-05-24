@@ -421,7 +421,9 @@ Each input source can queried a `XRInputPose` using the `getInputPose()` functio
 
 If an input source can be tracked the `XRInputPose`'s `gripMatrix` will indicate the device's position and orientation. This will be `null` if the input source isn't trackable. The `gripMatrix` is a transform into a space where if the user was holding a straight rod in their hand it would be aligned with the negative Z axis (forward) and the origin rests at their palm. This enables developers to properly render a virtual object held in the user's hand. For example, a sword would be positioned so that the blade points directly down the negative Z axis and the center of the handle is at the origin.
 
-An input source will also provide its preferred pointing ray, which is defined as a ray originating at `[0, 0, 0]` and extending down the negative Z axis, transformed bt the `pointerMatrix` attribute of an `XRInputPose` object. `pointerMatrix` will never be `null`. It's value will differ based on the type of input source that produces it, which is represented by the `pointerOrigin` attribute:
+An input source will also provide its preferred pointing ray, given by the `XRInputPose`'s `targetRay`. The ray, which is an `XRRay` object, includes both an `origin` and `direction`, both given as `XRVector3`s. The `XRRay` also defines a `transformMatrix` which represents the transform from a ray originating at `[0, 0, 0]` and extending down the negative Z axis to the ray described by the `XRRay`'s `origin` and `direction`. This is useful for positioning graphical representations of the ray.
+
+The `targetRay` will never be `null`. It's value will differ based on the type of input source that produces it, which is represented by the `pointerOrigin` attribute:
 
   * `'head'` indicates the pointer ray will originate at the user's head and follow the direction they are looking. (This is commonly referred to as a "gaze input" device.) There should be at most one `'head'` input source per session.
   * `'hand'` indicates that the pointer ray originates from a handheld device, and represents the device's preferred targeting ray. The exact orientation of the ray relative to the device should follow platform-specific guidelines if there are any. In the absence of platform-specific guidance, the pointer ray should most likely point in the same direction as the user's index finger if it was outstretched while holding the controller.
@@ -439,7 +441,8 @@ for (let inputSource of xrInputSources) {
 
     // Highlight any objects that the pointing ray intersects with.
     // Presumes the use of a fictionalized rendering library.
-    let hoveredObject = scene.getObjectIntersectingRay(inputPose.pointerMatrix);
+    let ray = inputPose.targetRay;
+    let hoveredObject = scene.getObjectIntersectingRay(ray.origin, ray.direction);
     if (hoveredObject) {
       renderer.drawHighlight(hoveredObject);
     }
@@ -469,8 +472,8 @@ function RenderInputSource(inputSource, inputPose) {
   }
 
   if (inputSource.pointerOrigin != "screen") {
-    // Draw a pointer ray.
-    renderer.drawPointerRayWithTransform(inputPose.pointerMatrix);
+    // Draw the target ray.
+    renderer.drawTargetRayWithTransform(inputPose.targetRay.transformMatrix);
 
     // Draw a cursor.
     let cursorPosition = scene.getIntersectionPoint();
@@ -517,7 +520,8 @@ function onSelect(event) {
   let inputPose = event.frame.getInputPose(event.inputSource, xrFrameOfRef);
   if (inputPose) {
     // Ray cast into scene with the pointer to determine if anything was hit.
-    let selectedObject = scene.getObjectIntersectingRay(inputPose.pointerPoseMatrix);
+    let ray = inputPose.targetRay;
+    let selectedObject = scene.getObjectIntersectingRay(ray.origin, ray.direction);
     if (selectedObject) {
       selectedObject.onSelect();
     }
@@ -978,6 +982,20 @@ dictionary XRFrameOfReferenceOptions {
 // Input
 //
 
+[SecureContext, Exposed=Window]
+interface XRVector3 {
+  readonly attribute double x;
+  readonly attribute double y;
+  readonly attribute double z;
+};
+
+[SecureContext, Exposed=Window]
+interface XRRay {
+  readonly attribute XRVector3 origin;
+  readonly attribute XRVector3 direction;
+  readonly attribute Float32Array transformMatrix;
+};
+
 enum XRHandedness {
   "",
   "left",
@@ -997,7 +1015,7 @@ interface XRInputSource {
 
 interface XRInputPose {
   readonly attribute boolean emulatedPosition;
-  readonly attribute Float32Array pointerMatrix;
+  readonly attribute XRRay targetRay;
   readonly attribute Float32Array? gripMatrix;
 };
 
